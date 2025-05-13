@@ -1,0 +1,148 @@
+import threading
+import time
+import random
+from queue import Queue
+import logging
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logger = logging.getLogger()
+
+class Role:
+    def __init__(self, name, channels, is_optimized=False):
+        self.name = name
+        self.channels = channels  # Dict of channel_name: Queue
+        self.is_optimized = is_optimized
+        self.terminated = False
+        self.messages_sent = 0
+
+    def send(self, channel, message):
+        if not self.terminated:
+            self.channels[channel].put((self.name, message))
+            self.messages_sent += 1
+            logger.info(f"{self.name} sent {message} on {channel}")
+
+    def receive(self, channel, expected_sender):
+        if self.terminated:
+            return None
+        queue = self.channels[channel]
+        while not self.terminated:
+            if not queue.empty():
+                sender, message = queue.get()
+                if sender == expected_sender:
+                    logger.info(f"{self.name} received {message} from {sender} on {channel}")
+                    return message
+            time.sleep(0.001)  # Simulate waiting
+        return None
+
+    def terminate(self):
+        if self.is_optimized and not self.terminated:
+            self.terminated = True
+            logger.info(f"{self.name} terminated")
+
+class Choreography:
+    def __init__(self, is_optimized=False):
+        self.is_optimized = is_optimized
+        self.channels = {
+            'c1': Queue(),
+            'c2': Queue()
+        }
+        self.traces = []
+        self.messages_total = 0
+        self.start_time = None
+        self.end_time = None
+
+    def run(self):
+        self.start_time = time.time()
+        # Initialize roles
+        R1 = Role('R1', self.channels, self.is_optimized)
+        R2 = Role('R2', self.channels, self.is_optimized)
+        R3 = Role('R3', self.channels, self.is_optimized)
+        R4 = Role('R4', self.channels, self.is_optimized)
+
+        # Define projected processes based on Section 4.6
+        def R1_process():
+            # Proj(C_10, 1) = R1 ⊳ c1 R2 ; α_1^3
+            R1.send('c1', 'comm')
+            R1.receive('c1', 'R2')
+            R1.send('c1', 'α_1^3')  # α_1^3 to R3
+            R1.terminate()
+
+        def R2_process():
+            # Proj(C_10, 2) = R1 ⊲ c1 R2
+            message = R2.receive('c1', 'R1')
+            if message:
+                R2.send('c1', 'ack')
+            R2.terminate()
+
+        def R3_process():
+            # Proj(C_10, 3) = R3 ⊳ c2 R4 ; α_1^3 ⊲
+            R3.send('c2', 'comm')
+            R3.receive('c2', 'R4')
+            R3.receive('c1', 'R1')  # Receiving α_1^3
+            R3.terminate()
+
+        def R4_process():
+            # Proj(C_10, 4) = R3 ⊲ c2 R4
+            message = R4.receive('c2', 'R3')
+            if message:
+                R4.send('c2', 'ack')
+            R4.terminate()
+
+        # Run roles in parallel
+        threads = [
+            threading.Thread(target=R1_process),
+            threading.Thread(target=R2_process),
+            threading.Thread(target=R3_process),
+            threading.Thread(target=R4_process)
+        ]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Collect metrics
+        self.end_time = time.time()
+        self.messages_total = R1.messages_sent + R2.messages_sent + R3.messages_sent + R4.messages_sent
+        self.traces.append(['c1', 'c2', 'α_1^3'])  # Simplified trace
+
+    def get_metrics(self):
+        runtime = (self.end_time - self.start_time) * 1000  # Convert to ms
+        return {
+            'runtime_ms': runtime,
+            'messages': self.messages_total,
+            'traces': self.traces
+        }
+
+# Simulate C_10 for 1000 runs as per Table 2
+def simulate_C10(runs=1000):
+    # Baseline configuration
+    baseline_metrics = {'runtime_ms': 0, 'messages': 0}
+    for _ in range(runs):
+        choreo = Choreography(is_optimized=False)
+        choreo.run()
+        metrics = choreo.get_metrics()
+        baseline_metrics['runtime_ms'] += metrics['runtime_ms']
+        baseline_metrics['messages'] += metrics['messages']
+    baseline_metrics['runtime_ms'] /= runs
+    baseline_metrics['messages'] /= runs
+
+    # Optimized configuration
+    optimized_metrics = {'runtime_ms': 0, 'messages': 0}
+    for _ in range(runs):
+        choreo = Choreography(is_optimized=True)
+        choreo.run()
+        metrics = choreo.get_metrics()
+        optimized_metrics['runtime_ms'] += metrics['runtime_ms']
+        optimized_metrics['messages'] += metrics['messages']
+    optimized_metrics['runtime_ms'] /= runs
+    optimized_metrics['messages'] /= runs
+
+    return baseline_metrics, optimized_metrics
+
+if __name__ == "__main__":
+    baseline, optimized = simulate_C10(1000)
+    print(f"Baseline: Runtime {baseline['runtime_ms']:.2f} ms, Messages {baseline['messages']:.0f}")
+    print(f"Optimized: Runtime {optimized['runtime_ms']:.2f} ms, Messages {optimized['messages']:.0f}")
