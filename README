@@ -26,3 +26,48 @@ This repository contains the Python prototype and evaluation data for the paper 
 
 4. Verify installation:
 python src/orcpi_calculus.py --test
+
+Running Simulations
+
+Run ( C_{\text{ecomm}} ) simulation:
+python src/simulation.py --choreography cecomm --roles 4 --interactions 100 --runs 1000
+
+Run ( C_{\text{IoT}} ) simulation:
+python src/simulation.py --choreography ciot --roles 5 --interactions 100 --runs 1000
+
+Batch execution:
+bash run_simulation.sh
+
+Testing
+Unit tests for ( C_{\text{ecomm}} ) and ( C_{\text{IoT}} ) are located in prototype/tests/:
+python -m unittest tests/test_cecomm.py
+python -m unittest tests/test_ciot.py
+
+Data Format
+
+traces.csv:
+
+Columns: run_id, trace, timestamp
+Example:
+run_id,trace,timestamp
+1,"[c_1,c_2,c_3,c_4]",2025-08-01T12:00:00
+2,"[c_1,c_3,c_2,c_4]",2025-08-01T12:00:01
+
+metrics.csv:
+
+Columns: run_id, configuration, roles, interactions, runtime_ms, memory_mb, message_count, success_rate, deadlock_rate
+Example:
+run_id,configuration,roles,interactions,runtime_ms,memory_mb,message_count,success_rate,deadlock_rate
+1,Baseline,4,100,9.0,15.2,8,1.0,0.0
+2,Optimized,4,100,7.0,12.8,6,1.0,0.0
+
+Reproducing Results
+To reproduce the evaluation results (Section 5):
+
+1. Run simulations as described above.
+2. Aggregate results using:
+python src/simulation.py --aggregate evaluation_data/cecomm/metrics.csv
+3. Compare with Tables \ref{tab:ecomm_metrics}, \ref{tab:iot_metrics}, and Figures \ref{fig:case_study_runtime}, \ref{fig:method_comparison}.
+
+Contact
+For issues or access requests, contact yangchang.name@gmail.com.
