@@ -1,0 +1,36 @@
+Evaluation Data
+1. **cecomm/traces.csv (Example for 2 runs)
+run_id,trace,timestamp
+1,"[c_1,c_2,c_3,c_4]",2025-08-01T12:00:00
+2,"[c_1,c_3,c_2,c_4]",2025-08-01T12:00:01
+
+2. **cecomm/metrics.csv (Example for 2 runs)
+run_id,configuration,roles,interactions,runtime_ms,memory_mb,message_count,success_rate,deadlock_rate
+1,Baseline,4,100,9.0,15.2,8,1.0,0.0
+2,Optimized,4,100,7.0,12.8,6,1.0,0.0
+
+3. **ciot/traces.csv (Example for 2 runs)
+run_id,trace,timestamp
+1,"[c_1,c_2,c_3,c_4]",2025-08-01T12:00:00
+2,"[c_1,c_3,c_2,c_4]",2025-08-01T12:00:01
+
+4. **ciot/metrics.csv (Example for 2 runs)
+run_id,configuration,roles,interactions,runtime_ms,memory_mb,message_count,success_rate,deadlock_rate
+1,Baseline,5,100,11.0,10.5,10,1.0,0.0
+2,Optimized,5,100,9.0,8.7,8,1.0,0.0
+
+5. **evaluation_data/README.md
+# Evaluation Data for Orc_π Calculus
+
+This directory contains raw evaluation data for the \(\text{Orc}_\pi\) Calculus case studies (\( C_{\text{ecomm}} \), \( C_{\text{IoT}} \)) described in the paper.
+
+## Structure
+- **cecomm/**: E-commerce workflow
+  - `traces.csv`: Execution traces for 1,000 runs
+  - `metrics.csv`: Metrics (runtime, memory, message count, success rate, deadlock rate)
+- **ciot/**: IoT smart home workflow
+  - `traces.csv`: Execution traces for 1,000 runs
+  - `metrics.csv`: Metrics (runtime, memory, message count, success rate, deadlock rate)
+
+## Usage
+Use `prototype/src/simulation.py --aggregate` to compute means and standard deviations, as shown in Tables \ref{tab:ecomm_metrics} and \ref{tab:iot_metrics}.
