@@ -1,0 +1,28 @@
+# Orc_π Calculus: Prototype and Evaluation Data
+
+This repository contains the Python prototype and evaluation data for the paper "Orc_π Calculus: A Formal Framework for Web Services Choreography with Semantics and Projection," submitted to the *Journal of Computer Languages*. The prototype implements the \(\text{Orc}_\pi\) Calculus for simulating Web services and IoT choreographies, and the evaluation data includes traces and metrics for case studies \( C_{\text{ecomm}} \) and \( C_{\text{IoT}} \).
+
+## Prototype Setup Instructions
+
+### Prerequisites
+- **Python**: 3.8 or higher
+- **Dependencies**: Listed in `prototype/src/requirements.txt`
+  - Paho-MQTT 1.6.1 (`pip install paho-mqtt==1.6.1`)
+  - CoAPthon 4.0.2 (`pip install coapthon==4.0.2`)
+- **Operating System**: Linux, macOS, or Windows
+- **Hardware**: Minimum 4 GB RAM, 2 GHz CPU (recommended: 16 GB RAM, 2.4 GHz multi-core CPU for large-scale simulations)
+
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/isaacyang-2025/orcpi-calculus.git
+   cd orcpi-calculus
+   
+2. Navigate to the prototype directory:
+    cd prototype
+    
+3. Install dependencies:
+   pip install -r src/requirements.txt
+
+4. Verify installation:
+python src/orcpi_calculus.py --test
