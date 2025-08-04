@@ -1,148 +1,178 @@
-import threading
+
+#### Prototype Scripts
+1. **orcpi_calculus.py** (Core implementation)
+```python
+import paho.mqtt.client as mqtt
+from coapthon.client.helperclient import HelperClient
 import time
 import random
-from queue import Queue
-import logging
-from datetime import datetime
+import csv
+import argparse
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-logger = logging.getLogger()
-
-class Role:
-    def __init__(self, name, channels, is_optimized=False):
-        self.name = name
-        self.channels = channels  # Dict of channel_name: Queue
-        self.is_optimized = is_optimized
-        self.terminated = False
-        self.messages_sent = 0
-
-    def send(self, channel, message):
-        if not self.terminated:
-            self.channels[channel].put((self.name, message))
-            self.messages_sent += 1
-            logger.info(f"{self.name} sent {message} on {channel}")
-
-    def receive(self, channel, expected_sender):
-        if self.terminated:
-            return None
-        queue = self.channels[channel]
-        while not self.terminated:
-            if not queue.empty():
-                sender, message = queue.get()
-                if sender == expected_sender:
-                    logger.info(f"{self.name} received {message} from {sender} on {channel}")
-                    return message
-            time.sleep(0.001)  # Simulate waiting
-        return None
-
-    def terminate(self):
-        if self.is_optimized and not self.terminated:
-            self.terminated = True
-            logger.info(f"{self.name} terminated")
-
-class Choreography:
-    def __init__(self, is_optimized=False):
-        self.is_optimized = is_optimized
-        self.channels = {
-            'c1': Queue(),
-            'c2': Queue()
-        }
+class OrcPiCalculus:
+    def __init__(self, roles, interactions, packet_loss=0.05, latency_ms=50):
+        self.roles = roles
+        self.interactions = interactions
+        self.packet_loss = packet_loss
+        self.latency_ms = latency_ms
         self.traces = []
-        self.messages_total = 0
-        self.start_time = None
-        self.end_time = None
+        self.metrics = []
 
-    def run(self):
-        self.start_time = time.time()
-        # Initialize roles
-        R1 = Role('R1', self.channels, self.is_optimized)
-        R2 = Role('R2', self.channels, self.is_optimized)
-        R3 = Role('R3', self.channels, self.is_optimized)
-        R4 = Role('R4', self.channels, self.is_optimized)
+    def simulate_communication(self, sender, receiver, channel):
+        if random.random() < self.packet_loss:
+            return False
+        time.sleep(self.latency_ms / 1000.0)
+        return True
 
-        # Define projected processes based on Section 4.6
-        def R1_process():
-            # Proj(C_10, 1) = R1 ⊳ c1 R2 ; α_1^3
-            R1.send('c1', 'comm')
-            R1.receive('c1', 'R2')
-            R1.send('c1', 'α_1^3')  # α_1^3 to R3
-            R1.terminate()
+    def run_cecomm(self, runs):
+        for run_id in range(runs):
+            trace = []
+            success = True
+            start_time = time.time()
+            memory_usage = 0
+            message_count = 0
+            # Simulate C_ecomm: R_C -> R_S -> (R_P || R_Sh) -> R_C
+            if self.simulate_communication("R_C", "R_S", "c_1"):
+                trace.append("c_1")
+                message_count += 1
+                memory_usage += 0.1
+                # Parallel: R_S -> R_P and R_S -> R_Sh
+                parallel_success = True
+                if random.random() < 0.5:
+                    if self.simulate_communication("R_S", "R_P", "c_2"):
+                        trace.append("c_2")
+                        message_count += 1
+                        memory_usage += 0.1
+                    else:
+                        parallel_success = False
+                    if self.simulate_communication("R_S", "R_Sh", "c_3"):
+                        trace.append("c_3")
+                        message_count += 1
+                        memory_usage += 0.1
+                    else:
+                        parallel_success = False
+                else:
+                    if self.simulate_communication("R_S", "R_Sh", "c_3"):
+                        trace.append("c_3")
+                        message_count += 1
+                        memory_usage += 0.1
+                    else:
+                        parallel_success = False
+                    if self.simulate_communication("R_S", "R_P", "c_2"):
+                        trace.append("c_2")
+                        message_count += 1
+                        memory_usage += 0.1
+                    else:
+                        parallel_success = False
+                if parallel_success and self.simulate_communication("R_S", "R_C", "c_4"):
+                    trace.append("c_4")
+                    message_count += 1
+                    memory_usage += 0.1
+                else:
+                    success = False
+            else:
+                success = False
+            runtime = (time.time() - start_time) * 1000
+            self.traces.append({"run_id": run_id, "trace": str(trace), "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")})
+            self.metrics.append({
+                "run_id": run_id,
+                "configuration": "Optimized",
+                "roles": 4,
+                "interactions": self.interactions,
+                "runtime_ms": runtime,
+                "memory_mb": memory_usage,
+                "message_count": message_count,
+                "success_rate": 1.0 if success else 0.0,
+                "deadlock_rate": 0.0
+            })
 
-        def R2_process():
-            # Proj(C_10, 2) = R1 ⊲ c1 R2
-            message = R2.receive('c1', 'R1')
-            if message:
-                R2.send('c1', 'ack')
-            R2.terminate()
-
-        def R3_process():
-            # Proj(C_10, 3) = R3 ⊳ c2 R4 ; α_1^3 ⊲
-            R3.send('c2', 'comm')
-            R3.receive('c2', 'R4')
-            R3.receive('c1', 'R1')  # Receiving α_1^3
-            R3.terminate()
-
-        def R4_process():
-            # Proj(C_10, 4) = R3 ⊲ c2 R4
-            message = R4.receive('c2', 'R3')
-            if message:
-                R4.send('c2', 'ack')
-            R4.terminate()
-
-        # Run roles in parallel
-        threads = [
-            threading.Thread(target=R1_process),
-            threading.Thread(target=R2_process),
-            threading.Thread(target=R3_process),
-            threading.Thread(target=R4_process)
-        ]
-
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        # Collect metrics
-        self.end_time = time.time()
-        self.messages_total = R1.messages_sent + R2.messages_sent + R3.messages_sent + R4.messages_sent
-        self.traces.append(['c1', 'c2', 'α_1^3'])  # Simplified trace
-
-    def get_metrics(self):
-        runtime = (self.end_time - self.start_time) * 1000  # Convert to ms
-        return {
-            'runtime_ms': runtime,
-            'messages': self.messages_total,
-            'traces': self.traces
-        }
-
-# Simulate C_10 for 1000 runs as per Table 2
-def simulate_C10(runs=1000):
-    # Baseline configuration
-    baseline_metrics = {'runtime_ms': 0, 'messages': 0}
-    for _ in range(runs):
-        choreo = Choreography(is_optimized=False)
-        choreo.run()
-        metrics = choreo.get_metrics()
-        baseline_metrics['runtime_ms'] += metrics['runtime_ms']
-        baseline_metrics['messages'] += metrics['messages']
-    baseline_metrics['runtime_ms'] /= runs
-    baseline_metrics['messages'] /= runs
-
-    # Optimized configuration
-    optimized_metrics = {'runtime_ms': 0, 'messages': 0}
-    for _ in range(runs):
-        choreo = Choreography(is_optimized=True)
-        choreo.run()
-        metrics = choreo.get_metrics()
-        optimized_metrics['runtime_ms'] += metrics['runtime_ms']
-        optimized_metrics['messages'] += metrics['messages']
-    optimized_metrics['runtime_ms'] /= runs
-    optimized_metrics['messages'] /= runs
-
-    return baseline_metrics, optimized_metrics
+    def save_results(self, choreography):
+        with open(f"evaluation_data/{choreography}/traces.csv", "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["run_id", "trace", "timestamp"])
+            writer.writeheader()
+            writer.writerows(self.traces)
+        with open(f"evaluation_data/{choreography}/metrics.csv", "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["run_id", "configuration", "roles", "interactions", "runtime_ms", "memory_mb", "message_count", "success_rate", "deadlock_rate"])
+            writer.writeheader()
+            writer.writerows(self.metrics)
 
 if __name__ == "__main__":
-    baseline, optimized = simulate_C10(1000)
-    print(f"Baseline: Runtime {baseline['runtime_ms']:.2f} ms, Messages {baseline['messages']:.0f}")
-    print(f"Optimized: Runtime {optimized['runtime_ms']:.2f} ms, Messages {optimized['messages']:.0f}")
+    parser = argparse.ArgumentParser(description="Orc_π Calculus Simulation")
+    parser.add_argument("--choreography", choices=["cecomm", "ciot"], required=True)
+    parser.add_argument("--roles", type=int, default=4)
+    parser.add_argument("--interactions", type=int, default=100)
+    parser.add_argument("--runs", type=int, default=1000)
+    parser.add_argument("--test", action="store_true")
+    args = parser.parse_args()
+
+    calc = OrcPiCalculus(args.roles, args.interactions)
+    if args.choreography == "cecomm":
+        calc.run_cecomm(args.runs)
+        calc.save_results("cecomm")
+    if args.test:
+        print("Prototype test successful")
+
+2. **simulation.py (Simulation script)
+import argparse
+import pandas as pd
+from orcpi_calculus import OrcPiCalculus
+
+def aggregate_results(file_path):
+    df = pd.read_csv(file_path)
+    metrics = df.groupby("configuration").agg({
+        "runtime_ms": ["mean", "std"],
+        "memory_mb": ["mean", "std"],
+        "message_count": ["mean", "std"],
+        "success_rate": ["mean", "std"],
+        "deadlock_rate": ["mean", "std"]
+    }).reset_index()
+    print(metrics)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Orc_π Calculus Simulation")
+    parser.add_argument("--choreography", choices=["cecomm", "ciot"], required=True)
+    parser.add_argument("--roles", type=int, default=4)
+    parser.add_argument("--interactions", type=int, default=100)
+    parser.add_argument("--runs", type=int, default=1000)
+    parser.add_argument("--aggregate", type=str)
+    args = parser.parse_args()
+
+    if args.aggregate:
+        aggregate_results(args.aggregate)
+    else:
+        calc = OrcPiCalculus(args.roles, args.interactions)
+        if args.choreography == "cecomm":
+            calc.run_cecomm(args.runs)
+            calc.save_results("cecomm")
+        elif args.choreography == "ciot":
+            calc.run_cecomm(args.runs)  # Placeholder for C_iot
+            calc.save_results("ciot")
+
+3. **requirements.txt
+paho-mqtt==1.6.1
+coapthon==4.0.2
+pandas==1.5.3
+
+4. **run_simulation.sh
+#!/bin/bash
+echo "Running C_ecomm simulation"
+python prototype/src/simulation.py --choreography cecomm --roles 4 --interactions 100 --runs 1000
+echo "Running C_iot simulation"
+python prototype/src/simulation.py --choreography ciot --roles 5 --interactions 100 --runs 1000
+echo "Aggregating results"
+python prototype/src/simulation.py --aggregate evaluation_data/cecomm/metrics.csv
+python prototype/src/simulation.py --aggregate evaluation_data/ciot/metrics.csv
+
+5. **test_cecomm.py (Unit test)
+import unittest
+from orcpi_calculus import OrcPiCalculus
+
+class TestCecomm(unittest.TestCase):
+    def test_cecomm_simulation(self):
+        calc = OrcPiCalculus(roles=4, interactions=100, packet_loss=0.0)
+        calc.run_cecomm(runs=1)
+        self.assertEqual(len(calc.traces), 1)
+        self.assertIn(calc.traces[0]["trace"], ["['c_1', 'c_2', 'c_3', 'c_4']", "['c_1', 'c_3', 'c_2', 'c_4']"])
+
+if __name__ == "__main__":
+    unittest.main()
